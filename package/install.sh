@@ -130,7 +130,7 @@ step "1. this Mac"
 v=$(sw_vers -productVersion); MAJ=${v%%.*}
 BUILD=$(sw_vers -buildVersion)
 printf '%s\n' "$BUILD" | grep -Eq '^[0-9]+[A-Za-z][A-Za-z0-9]+$' || die "cannot identify the current macOS build"
-case $MAJ in 15|26) ;; *) die "This driver is built for macOS 15 and 26 (this is $v); no changes made";; esac
+case $MAJ in 11|15|26) ;; *) die "This driver is built for macOS 11, 15 and 26 (this is $v); no changes made";; esac
 # NVAccel is the one kext built per macOS: Tahoe made the IOAcceleratorFamily2 methods it inherits private (see
 # kexts/NVRM/accel/gen_tahoe_fwd.py). The other three kexts are the same binaries on 15 and 26.
 VAR="$HERE/Library/NullMoth/kexts/$MAJ"; [ -d "$VAR/NVAccel.kext" ] || die "this package has no NVAccel for macOS $MAJ"

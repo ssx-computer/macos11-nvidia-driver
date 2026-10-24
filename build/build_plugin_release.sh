@@ -9,11 +9,12 @@ REV=${1:?git revision}; OUT=${2:?output directory}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 R=/Volumes/MiniData/build/plugin-release
 TMP=$(mktemp -d)
+MINOS=${MINOS:-15.0}   # deployment target; set MINOS=11.0 in the CI for macOS 11
 trap 'rm -rf "$TMP"' EXIT
 git -C "$HERE" archive "$REV" plugin | tar x -C "$TMP"
 ssh mini "rm -rf $R/src $R/out && mkdir -p $R/src $R/out"
 rsync -a "$TMP/plugin/" "mini:$R/src/"
-ssh mini "cd $R/src && xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -bundle -fobjc-arc -O1 -DNVMTL_RELEASE=1 \
+ssh mini "cd $R/src && xcrun clang -arch x86_64 -mmacosx-version-min=$MINOS -bundle -fobjc-arc -O1 -DNVMTL_RELEASE=1 \
   -Wno-protocol -Wno-incomplete-implementation -Werror=unguarded-availability-new \
   -I/Volumes/MiniData/build/gpu-src/mesa/include -o ../out/NVMTLDriver NVMTLDevice.m \
   -framework Foundation -framework Metal -framework IOSurface -framework IOKit -framework CoreFoundation 2>../out/build.err" \
@@ -21,5 +22,5 @@ ssh mini "cd $R/src && xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -bundl
 mkdir -p "$OUT"
 scp -q "mini:$R/out/NVMTLDriver" "mini:$R/out/build.err" "$OUT/"
 minos=$(vtool -show-build "$OUT/NVMTLDriver" | awk '/minos/{print $2; exit}')
-[ "$minos" = 15.0 ] || { echo "STOP: minos $minos, not 15.0"; exit 1; }
+[ "$minos" = "$MINOS" ] || { echo "STOP: minos $minos, not $MINOS"; exit 1; }
 echo "NVMTLDriver $(git -C "$HERE" rev-parse --short "$REV") sha $(shasum -a 256 "$OUT/NVMTLDriver" | cut -c1-8) minos $minos warnings $(grep -c ': warning:' "$OUT/build.err" || true)"

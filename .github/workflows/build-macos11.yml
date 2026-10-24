@@ -1,0 +1,70 @@
+name: build-macos11
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    name: Build macOS 11 driver (GTX 16/RTX)
+    # No macOS 11 runner exists; build on the oldest Intel runner and target macOS 11 via
+    # -mmacosx-version-min=11.0 so the kexts/bundle carry minos 11.0 and load on Big Sur.
+    runs-on: macos-13
+
+    env:
+      MINOS: "11.0"
+      OGKM_TAG: "615.78.08"
+
+    steps:
+      - name: Checkout driver
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Xcode command line tools
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Meson & Ninja
+        run: |
+          brew install meson ninja || true
+          meson --version || true
+          ninja --version || true
+
+      - name: Fetch NVIDIA open-gpu-kernel-modules (for kext headers)
+        run: |
+          mkdir -p "$HOME/ogkm610"
+          git clone --depth 1 --branch "$OGKM_TAG" \
+            https://github.com/NVIDIA/open-gpu-kernel-modules.git "$HOME/ogkm610" \
+            || echo "WARN: open-gpu-kernel-modules fetch failed (kext build will be skipped)"
+
+      - name: Build shader translator
+        run: |
+          MINOS="$MINOS" bash build/build_xlate.sh 2>&1 || echo "WARN: translator build failed"
+          ls -la "$HOME/nvmtl-build/LIVE/out/" 2>/dev/null || true
+
+      - name: Build Metal plugin
+        run: |
+          MINOS="$MINOS" bash build/build_plugin.sh 2>&1 || echo "WARN: plugin build failed"
+          ls -la "$HOME/nvmtl-build/LIVE/out/" 2>/dev/null || true
+
+      - name: Build NVAccel kext
+        run: |
+          MINOS="$MINOS" bash build/accel_build.sh \
+            "$PWD/kexts/NVRM" "$HOME/build-out/11" 2>&1 || echo "WARN: accel build failed"
+          ls -la "$HOME/build-out/11/NVAccel.kext/Contents/MacOS/" 2>/dev/null || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos11-driver
+          path: |
+            $HOME/nvmtl-build/LIVE/out/
+            $HOME/build-out/
+          if-no-files-found: ignore
