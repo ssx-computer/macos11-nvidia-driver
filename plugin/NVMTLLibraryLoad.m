@@ -22,14 +22,18 @@ extern char **environ;
 void nvlog(const char *fmt, ...);
 
 #import <CommonCrypto/CommonDigest.h>
-#define NVMTL_AIR_OPT   "/Library/GPUBundles/nvmtl/air-opt"
+#ifndef NVMTL_BUNDLE_DIR
+#define NVMTL_BUNDLE_DIR "/Library/GPUBundles"
+#endif
+#define NVMTL_NVMTL_DIR   NVMTL_BUNDLE_DIR "/nvmtl"
+#define NVMTL_AIR_OPT   NVMTL_NVMTL_DIR "/air-opt"
 #include <unistd.h>
 static inline const char *nvmtl_pick_ll(const char *staged, const char *dev) {
     return access(staged, R_OK) == 0 ? staged : dev;
 }
 #ifndef NVMTL_XLATE_LIB
-#define NVMTL_XLATE_LIB nvmtl_pick_ll("/Library/GPUBundles/nvmtl/libnvmtl_translate.dylib", \
-                                      "/Library/GPUBundles/nvmtl/libnvmtl_translate.dylib")
+#define NVMTL_XLATE_LIB nvmtl_pick_ll(NVMTL_NVMTL_DIR "/libnvmtl_translate.dylib", \
+                                      NVMTL_NVMTL_DIR "/libnvmtl_translate.dylib")
 #endif
 
 typedef int (*nvmtl_translate_fn)(const char *ll, const char *stage, uint8_t **out, size_t *out_len, char *err, size_t err_len);
@@ -144,7 +148,7 @@ static int nvmtl_xlate_ready(void) {
 }
 
 #ifndef NVMTL_AIRCACHE_DIR
-#define NVMTL_AIRCACHE_DIR "/Library/GPUBundles/nvmtl/aircache"
+#define NVMTL_AIRCACHE_DIR NVMTL_NVMTL_DIR "/aircache"
 #endif
 
 static _Atomic unsigned long gAirHit, gAirMiss, gAirStored;

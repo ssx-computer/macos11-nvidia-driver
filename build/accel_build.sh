@@ -1,6 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 SRC=$1; OUT=$2; mkdir -p "$OUT/NVAccel.kext/Contents/MacOS"
+MINOS=${MINOS:-15.0}   # deployment target; MINOS=11.0 builds NVAccel for macOS 11 Big Sur
 OGKM=${OGKM:-$HOME/ogkm610}; RE=${RE:-$SRC/accel/re}   # the reconstructed IOGraphicsAccelerator2 / IOAccelerator headers ship in the repo
 SDK=$(xcrun --show-sdk-path); KHDR="$SDK/System/Library/Frameworks/Kernel.framework/Headers"; NV="$OGKM/src/nvidia"; KMS="$OGKM/src/nvidia-modeset"
 RMINC=( -I"$NV/arch/nvalloc/unix/include" -I"$NV/arch/nvalloc/common/inc" -I"$NV/arch/nvalloc/common/inc/gsp"
@@ -20,4 +21,16 @@ CFLAGS=( -arch x86_64 -fapple-kext -mkernel -nostdinc -I"$KHDR" -I"$SRC" "${RMIN
 xcrun clang++ "${CFLAGS[@]}" -I"$SRC/accel" -I"$SRC/accel/iofam" -I"$RE" -c "$SRC/accel/nvrm-accel.cpp" -o "$OUT/nvrm-accel.o" 2>"$OUT/accel.err" || { grep error "$OUT/accel.err" | head; exit 1; }
 xcrun clang++ -arch x86_64 -fapple-kext -nostdlib -Xlinker -kext -lkmodc++ -lkmod -lcc_kext "$OUT/nvrm-accel.o" -o "$OUT/NVAccel.kext/Contents/MacOS/NVAccel" 2>"$OUT/accelld.err" || { cat "$OUT/accelld.err" | head; exit 1; }
 cp "$SRC/accel/Info.plist" "$OUT/NVAccel.kext/Contents/Info.plist"
+# macOS 11 (Big Sur) has no /Library/GPUBundles mechanism (that path is macOS 14+). Its WindowServer
+# resolves MetalPluginName relative to the kext's Contents/, so for a macOS 11 target we point it at an
+# embedded bundle (Contents/PlugIns/NVMTLDriver) and copy NVMTLDriver.bundle in beside it.
+if [ "$MINOS" \< 13.0 ]; then
+  /usr/libexec/PlistBuddy -c 'Set :IOKitPersonalities:NVAccel:MetalPluginName PlugIns/NVMTLDriver' \
+    "$OUT/NVAccel.kext/Contents/Info.plist" 2>/dev/null \
+    || { echo "STOP: could not re-point MetalPluginName for macOS $MINOS"; exit 1; }
+  [ -n "${NVMTL_BUNDLE:-}" ] || { echo "STOP: MINOS=$MINOS needs NVMTL_BUNDLE=<path to NVMTLDriver.bundle>"; exit 1; }
+  mkdir -p "$OUT/NVAccel.kext/Contents/PlugIns"
+  ditto "$NVMTL_BUNDLE" "$OUT/NVAccel.kext/Contents/PlugIns/NVMTLDriver.bundle" \
+    || { echo "STOP: could not embed NVMTLDriver.bundle"; exit 1; }
+fi
 echo "NVAccel $(md5 -q "$OUT/NVAccel.kext/Contents/MacOS/NVAccel") $(stat -f %z "$OUT/NVAccel.kext/Contents/MacOS/NVAccel") B  ($(xcrun clang++ --version | head -1))"

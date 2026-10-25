@@ -7,7 +7,11 @@ cd $S || exit 2
 C=$(git rev-parse --short HEAD); O=$N/LIVE/out/plugin-$C${RELEASE:+-release}; mkdir -p $O
 RDEF=""; [ -n "${RELEASE:-}" ] && RDEF="-DNVMTL_RELEASE=1"
 MINOS=${MINOS:-15.0}   # deployment target; set MINOS=11.0 in the CI for macOS 11 (Big Sur)
-MINOSFLAG=(-mmacosx-version-min=$MINOS -Werror=unguarded-availability-new)
+# macOS 13+ SDK targetting an older minos emits unguarded-availability for Metal 3 APIs. The
+# NullMoth driver forwards unimplemented selectors at runtime (NVMTLForward.m) and WindowServer on
+# macOS 11 never calls Metal 3 methods, so we do NOT promote those to errors for a macOS 11 target.
+if [ "$MINOS" \>= 15.0 ]; then MINOSFLAG=(-mmacosx-version-min=$MINOS -Werror=unguarded-availability-new)
+else MINOSFLAG=(-mmacosx-version-min=$MINOS -Wunguarded-availability-new); fi
 until mkdir $L 2>/dev/null; do sleep 5; done; echo "build_plugin $C $$" > $L/owner; trap 'rm -rf "$L"' EXIT
 xcrun clang -arch x86_64 -bundle -fobjc-arc -O1 $RDEF "${MINOSFLAG[@]}" -Wno-protocol -Wno-incomplete-implementation \
   -I"$HOME/Vulkan-Headers/include" -o $O/NVMTLDriver NVMTLDevice.m \

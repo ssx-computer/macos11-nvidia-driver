@@ -184,11 +184,11 @@ HERE="$STAGE/pkgroot"
 VAR="$HERE/Library/NullMoth/kexts/$MAJ"
 # --strict: without it shasum skips a malformed line and still reports success
 (cd "$HERE" && shasum -a 256 --strict -c SHA256SUMS --quiet) || die "SHA256SUMS mismatch: re-download the package"
-for target in 15 26; do
+for target in 11 15 26; do
   [ -f "$HERE/Library/NullMoth/kexts/$target/NVAccel.kext/Contents/MacOS/NVAccel" ] && \
     [ -f "$HERE/Library/NullMoth/kexts/$target/NVAccel.kext/Contents/Info.plist" ] || die "this package lacks the complete macOS $target accelerator"
 done
-ok "every file matches SHA256SUMS and both OS accelerators are present"
+ok "every file matches SHA256SUMS and all OS accelerators are present"
 RUNTIME_PREFLIGHT="$SELF/nullmoth-runtime-check.sh"
 [ -x "$RUNTIME_PREFLIGHT" ] || die "runtime compatibility checker is missing"
 /bin/bash "$RUNTIME_PREFLIGHT" "$HERE" "$v" || die "userland runtime cannot load on this macOS version"

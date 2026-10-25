@@ -13,6 +13,12 @@ void nvlog(const char *fmt, ...);
 #import "NVMTLObjects.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+
+/* Where the userland payload lives. macOS 14+ puts it under /Library/GPUBundles; macOS 11 has
+ * no such mechanism, so the CI builds the driver to look in its own directory instead. */
+#ifndef NVMTL_BUNDLE_DIR
+#define NVMTL_BUNDLE_DIR "/Library/GPUBundles"
+#endif
 static int nvmtl_trace_on(void);
 static void nvtrace_emit(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 // Guard the call site: converting NSString arguments on every draw is expensive
@@ -100,7 +106,7 @@ __attribute__((constructor)) static void nvmtl_conf_knobs(void)
           free(dup); }
       unsetenv("NVMTL_CONF_SET"); }
     char recbuf[2048]; size_t recn = 0; recbuf[0] = 0;
-    FILE *f = fopen("/Library/GPUBundles/nvmtl/nvrm610.conf", "r");
+    FILE *f = fopen(NVMTL_BUNDLE_DIR "/nvmtl/nvrm610.conf", "r");
     if (!f) { if (forgot) nvlog("conf: forgot %u inherited knob(s); no conf file", forgot); return; }
     char line[512];
     unsigned took = 0;
@@ -124,7 +130,7 @@ __attribute__((constructor)) static void nvmtl_conf_knobs(void)
     }
     fclose(f);
     if (recn) setenv("NVMTL_CONF_SET", recbuf, 1);
-    if (took || forgot) nvlog("conf: %u knob(s) read from /Library/GPUBundles/nvmtl/nvrm610.conf, %u inherited conf knob(s) forgotten first (the environment still wins)", took, forgot);
+    if (took || forgot) nvlog("conf: %u knob(s) read from " NVMTL_BUNDLE_DIR "/nvmtl/nvrm610.conf, %u inherited conf knob(s) forgotten first (the environment still wins)", took, forgot);
 }
 static int nvmtl_dontcare_clears(void) {
     static int on = -1;

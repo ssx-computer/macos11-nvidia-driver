@@ -13,8 +13,12 @@
 
 void nvlog(const char *fmt, ...);
 
+#ifndef NVMTL_BUNDLE_DIR
+#define NVMTL_BUNDLE_DIR "/Library/GPUBundles"
+#endif
+
 #define NVMTL_VENDOR_PLUGIN \
-    "/Library/GPUBundles/NVIDIAShared.bundle/Contents/MacOS/NVIDIAShared"
+    NVMTL_BUNDLE_DIR "/NVIDIAShared.bundle/Contents/MacOS/NVIDIAShared"
 
 #define NVMTL_COMPILER_FLAGS 286ull
 

@@ -18,6 +18,13 @@
 #define VK_NO_PROTOTYPES 1
 #include <vulkan/vulkan.h>
 #include "nvmtl_vk.h"
+
+/* Where the userland NVK/translator payload lives. macOS 14+ reads it from /Library/GPUBundles;
+ * macOS 11 has no such mechanism, so the CI builds it for the driver's own directory instead. */
+#ifndef NVMTL_BUNDLE_DIR
+#define NVMTL_BUNDLE_DIR "/Library/GPUBundles"
+#endif
+#define NVMTL_NVMTL_DIR   NVMTL_BUNDLE_DIR "/nvmtl"
 #include "nvmtl_tex_upload.h"
 #include "nvmtl_cmd_refusal.h"
 #include "nvmtl_sampler_state.h"
@@ -57,8 +64,8 @@ static pthread_mutex_t g_gpu_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 static inline const char *nvmtl_pick_vk(const char *staged, const char *dev) {
     return access(staged, R_OK) == 0 ? staged : dev;
 }
-#define NVMTL_LOADER nvmtl_pick_vk("/Library/GPUBundles/nvmtl/libvulkan.dylib", \
-                                   "/Library/GPUBundles/nvmtl/libvulkan.dylib")
+#define NVMTL_LOADER nvmtl_pick_vk(NVMTL_NVMTL_DIR "/libvulkan.dylib", \
+                                   NVMTL_NVMTL_DIR "/libvulkan.dylib")
 /*
  * The Vulkan driver under this process's Metal device follows the GPU it runs on: NVK for NVIDIA (the NVAccel
  * accelerator), RADV for AMD and ANV for Intel (NMXAccel, the accelerator for the GPUs NMXGPU drives).
@@ -100,18 +107,18 @@ uint16_t nvmtl_vk_vendor(void)
 }
 static const char *nvmtl_vk_icd_json(void) {
     switch (nvmtl_vk_vendor()) {
-    case 0x1002: return "/Library/GPUBundles/nvmtl/radeon_icd.json";
-    case 0x8086: return "/Library/GPUBundles/nvmtl/intel_icd.json";
-    default:     return "/Library/GPUBundles/nvmtl/nvk_icd.json";
+    case 0x1002: return NVMTL_NVMTL_DIR "/radeon_icd.json";
+    case 0x8086: return NVMTL_NVMTL_DIR "/intel_icd.json";
+    default:     return NVMTL_NVMTL_DIR "/nvk_icd.json";
     }
 }
 #define NVMTL_ICD    nvmtl_vk_icd_json()
 static inline const char *nvmtl_icd_lib_path(void) {
     const char *e = getenv("NVMTL_ICD_LIB"); if (e && access(e, R_OK) == 0) return e;
     switch (nvmtl_vk_vendor()) {
-    case 0x1002: return "/Library/GPUBundles/nvmtl/libvulkan_radeon.dylib";
-    case 0x8086: return "/Library/GPUBundles/nvmtl/libvulkan_intel.dylib";
-    default:     return "/Library/GPUBundles/nvmtl/libvulkan_nouveau.dylib";
+    case 0x1002: return NVMTL_NVMTL_DIR "/libvulkan_radeon.dylib";
+    case 0x8086: return NVMTL_NVMTL_DIR "/libvulkan_intel.dylib";
+    default:     return NVMTL_NVMTL_DIR "/libvulkan_nouveau.dylib";
     }
 }
 #define NVMTL_ICD_LIB nvmtl_icd_lib_path()
@@ -4447,7 +4454,7 @@ int nvmtl_vk_cmd_dispatch_sass(nvk_cmdbuf *c,
     if (!looked) {
 
         const char *path = getenv("NVMTL_NVK_DYLIB");
-        void *h = dlopen(path && *path ? path : "/Library/GPUBundles/nvmtl/libvulkan_nouveau.dylib",
+        void *h = dlopen(path && *path ? path : NVMTL_NVMTL_DIR "/libvulkan_nouveau.dylib",
                          RTLD_NOW | RTLD_LOCAL);
         looked = 1;
         if (!h) nvlog("sass dispatch: cannot open NVK: %s", dlerror());

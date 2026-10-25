@@ -18,6 +18,12 @@
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
 #include <pthread.h>
+
+/* Where the userland payload lives. macOS 14+ puts it under /Library/GPUBundles (the GPUBundles
+ * mechanism); macOS 11 has none, so the CI builds the driver to look in its own directory instead. */
+#ifndef NVMTL_BUNDLE_DIR
+#define NVMTL_BUNDLE_DIR "/Library/GPUBundles"
+#endif
 #include <stdatomic.h>
 #include <time.h>
 #include "nvmtl_sample_positions.h"
@@ -505,7 +511,7 @@ static bool nvmtl_process_is_allowed(void)
           nvlog("  headless GPU: no device for WindowServer (it composites on the GPU that owns the display)"); return false; } }
     if (getenv("NVMTL_ENABLE")) return true;
     if (!strcmp(me, "mtlprobe") || !strcmp(me, "nvmtltest") || !strcmp(me, "nvmtlrender")) return true;
-    FILE *f = fopen("/Library/GPUBundles/nvmtl-allow.txt", "r");
+    FILE *f = fopen(NVMTL_BUNDLE_DIR "/nvmtl-allow.txt", "r");
     if (!f) f = fopen("/Library/Extensions/nvmtl-allow.txt", "r");
     if (!f) { nvlog("  no allow-list readable from this process: no device for %s (cannot read nvmtl-allow.txt)", me); return false; }
     char line[256]; bool ok = false;
@@ -602,7 +608,7 @@ static void nvmtl_install_hw_resource_pools(id dev)
 }
 
 - (void)nvmtlProbeGPUPass {
-    if (access("/Library/GPUBundles/nvmtl-gpupass-probe", F_OK) != 0) return;
+    if (access(NVMTL_BUNDLE_DIR "/nvmtl-gpupass-probe", F_OK) != 0) return;
     static int done = 0; if (done) return; done = 1;
     if (nvmtl_vk_init()) { nvlog("gpupass probe: Vulkan is down in this process — cannot answer"); return; }
     NSString *p = @"/System/Library/Frameworks/CoreDisplay.framework/Versions/A/Resources/default.metallib";
