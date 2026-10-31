@@ -1,5 +1,10 @@
 name: build-macos11
 
+# macOS 11 (Big Sur) target. GitHub has no macOS 11 runner, so we build on the oldest Intel runner
+# (macos-13) and force the deployment target to 11.0. Every CPU-bound build is pinned to the x86-64
+# baseline because the target machine is an Intel E5-1660 v1 (Sandy Bridge-EP): it has AVX but no
+# AVX2, and an AVX2 instruction reaching WindowServer is an instant SIGILL and a black screen.
+
 on:
   workflow_dispatch:
   push:
@@ -8,8 +13,9 @@ on:
 
 env:
   MINOS: "11.0"
-  OGKM_TAG: "615.78.08"
   MESA_BASE: "17ca6174"
+  # macOS 11 has no /Library/GPUBundles: the driver is loaded by its kext, not by the Metal plugin
+  # scanner, so the bundles and caches live under /Library/NullMoth on that release.
   NVMTL_BUNDLE_DIR: "/Library/NullMoth"
   RUST_BASELINE: "-C target-cpu=x86-64"
 
@@ -26,11 +32,12 @@ jobs:
         run: |
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk macosx --show-sdk-path
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Meson & Ninja
+      - name: Install Meson and Ninja
         run: |
           python3 -m pip install --user --upgrade meson ninja
           PYBIN="$HOME/Library/Python/$(python3 -c 'import sys;print(sys.version_info.minor)')/bin"
@@ -38,15 +45,17 @@ jobs:
           "$PYBIN/meson" --version
           "$PYBIN/ninja" --version
 
-      - name: Build translator (AIR -> SPIR-V)
+      - name: Build translator (AIR to SPIR-V)
         run: |
           set -euo pipefail
           export RUSTFLAGS="$RUST_BASELINE --remap-path-prefix=$PWD/translator=/src"
-          OUT="$RUNNER_TEMP/out"; mkdir -p "$OUT"
-          cargo build --release --manifest-path translator/wrapper/Cargo.toml \
+          OUT="$RUNNER_TEMP/out"
+          mkdir -p "$OUT"
+          cargo build --release \
+            --manifest-path translator/wrapper/Cargo.toml \
             --target-dir "$RUNNER_TEMP/xlate-target"
           D="$RUNNER_TEMP/xlate-target/release/libnvmtl_translate.dylib"
-          cp "$D" "$OUT/"
+          cp "$D" "$OUT/libnvmtl_translate.dylib"
           install_name_tool -id @rpath/libnvmtl_translate.dylib "$OUT/libnvmtl_translate.dylib"
           codesign -f -s - "$OUT/libnvmtl_translate.dylib"
           file "$OUT/libnvmtl_translate.dylib"
@@ -55,7 +64,8 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git "$RUNNER_TEMP/Vulkan-Headers"
-          OUT="$RUNNER_TEMP/out/plugin"; mkdir -p "$OUT"
+          OUT="$RUNNER_TEMP/out/plugin"
+          mkdir -p "$OUT"
           cd plugin
           xcrun clang -arch x86_64 -march=x86-64 -bundle -fobjc-arc -O1 \
             -mmacosx-version-min="$MINOS" -Wunguarded-availability-new \
@@ -67,8 +77,8 @@ jobs:
             2> "$OUT/NVMTLDriver.err" \
             || { grep -A2 ': error:' "$OUT/NVMTLDriver.err" | head -40; exit 1; }
           codesign -f -s - "$OUT/NVMTLDriver"
-          echo "errors: $(grep -c ': error:' "$OUT/NVMTLDriver.err" || true)"
           otool -l "$OUT/NVMTLDriver" | awk '/minos/{print "minos", $2; exit}'
+          echo "errors: $(grep -c ': error:' "$OUT/NVMTLDriver.err" || true)"
 
       - name: Build NVK (libvulkan_nouveau.dylib) from Mesa
         run: |
@@ -93,7 +103,8 @@ jobs:
             -Dcpp_args="-march=x86-64 -ffile-prefix-map=$PWD=/src" \
             -Drust_args="-C target-cpu=x86-64 --remap-path-prefix=$PWD=/src"
           ninja -C build -k 0 src/nouveau/vulkan/libvulkan_nouveau.dylib
-          OUT="$RUNNER_TEMP/out/nvmtl"; mkdir -p "$OUT"
+          OUT="$RUNNER_TEMP/out/nvmtl"
+          mkdir -p "$OUT"
           cp build/src/nouveau/vulkan/libvulkan_nouveau.dylib "$OUT/"
           strip -S "$OUT/libvulkan_nouveau.dylib"
           file "$OUT/libvulkan_nouveau.dylib"
@@ -109,10 +120,9 @@ jobs:
             -c 'Add :CFBundleIdentifier string com.nullmoth.NVMTLDriver' \
             -c 'Add :CFBundleName string NVMTLDriver' \
             -c 'Add :CFBundlePackageType string BNDL' \
-            -c 'Add :CFBundleVersion string 1.0' "$B/Contents/Info.plist"
+            -c 'Add :CFBundleVersion string 2.0.5' "$B/Contents/Info.plist"
           cp "$OUT/nvmtl/libvulkan_nouveau.dylib" "$OUT/GPUBundles/nvmtl/"
           cp "$OUT/libnvmtl_translate.dylib" "$OUT/GPUBundles/nvmtl/"
-          nm -gU "$OUT/GPUBundles/nvmtl/libvulkan_nouveau.dylib" | grep -c . > "$RUNNER_TEMP/xlate-exports.txt" || true
           printf '%s\n' '*NVAccel*' > "$OUT/GPUBundles/nvmtl-allow.txt"
           find "$OUT/GPUBundles" -type f | sort
 
