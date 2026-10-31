@@ -14,6 +14,9 @@ toks[toks.index("arch/nvalloc/unix/src/osapi.c")] = src
 for i, t in enumerate(toks):
     if t == "-o": toks[i + 1] = out
     if t in ("-MF", "-MT"): toks[i + 1] = out + ".d"
+# The test machine is an Intel E5-1660 v1 (Sandy Bridge-EP): AVX but no AVX2. Append -march=x86-64
+# last so the baseline wins over anything RM put earlier on the recorded command line.
+toks += ["-march=x86-64"]
 r = subprocess.run(toks, cwd=rm, capture_output=True, text=True)
 sys.stderr.write(r.stderr[-6000:])
 sys.exit(r.returncode)

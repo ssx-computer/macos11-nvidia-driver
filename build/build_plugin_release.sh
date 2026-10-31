@@ -10,12 +10,22 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 R=/Volumes/MiniData/build/plugin-release
 TMP=$(mktemp -d)
 MINOS=${MINOS:-15.0}   # deployment target; set MINOS=11.0 in the CI for macOS 11
+# -Werror=unguarded-availability-new is meaningful only when targeting 15 or newer. On macOS 11 the
+# plugin deliberately references newer API guarded at run time, and the compiler cannot prove it is
+# never called, so the error has to stay off.
+AVFLAG=(-Wunguarded-availability-new)
+case "$MINOS" in 1[5-9]*|[2-9][0-9]*) AVFLAG=(-Werror=unguarded-availability-new);; esac
+# Where the plugin looks for the NVK/translator payload. Default is /Library/GPUBundles (macOS 14+);
+# macOS 11 has no such directory, so the CI passes the kext-owned location instead.
+BUNDLEDEF=""
+[ -z "${NVMTL_BUNDLE_DIR:-}" ] || BUNDLEDEF="-DNVMTL_BUNDLE_DIR=\\\"$NVMTL_BUNDLE_DIR\\\""
 trap 'rm -rf "$TMP"' EXIT
 git -C "$HERE" archive "$REV" plugin | tar x -C "$TMP"
 ssh mini "rm -rf $R/src $R/out && mkdir -p $R/src $R/out"
 rsync -a "$TMP/plugin/" "mini:$R/src/"
-ssh mini "cd $R/src && xcrun clang -arch x86_64 -mmacosx-version-min=$MINOS -bundle -fobjc-arc -O1 -DNVMTL_RELEASE=1 \
-  -Wno-protocol -Wno-incomplete-implementation -Werror=unguarded-availability-new \
+ssh mini "cd $R/src && xcrun clang -arch x86_64 -march=x86-64 -mmacosx-version-min=$MINOS -bundle -fobjc-arc -O1 -DNVMTL_RELEASE=1 \
+  $BUNDLEDEF \
+  -Wno-protocol -Wno-incomplete-implementation ${AVFLAG[0]} \
   -I/Volumes/MiniData/build/gpu-src/mesa/include -o ../out/NVMTLDriver NVMTLDevice.m \
   -framework Foundation -framework Metal -framework IOSurface -framework IOKit -framework CoreFoundation 2>../out/build.err" \
   || { ssh mini "grep ' error:' $R/out/build.err | head -20"; exit 1; }

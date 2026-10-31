@@ -6,7 +6,7 @@ cd $X || exit 2
 [ -z "$(git status --porcelain)" ] || { echo "STOP: translator tree has uncommitted edits:"; git status --short | head; exit 3; }
 C=$(git rev-parse --short HEAD); O=$N/LIVE/out/xlate-$C; mkdir -p $O
 until mkdir $L 2>/dev/null; do sleep 5; done; echo "build_xlate $C $$" > $L/owner; trap 'rm -rf "$L"' EXIT
-export RUSTFLAGS="--remap-path-prefix=$X=/src --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME=/build"
+export RUSTFLAGS="-C target-cpu=x86-64 --remap-path-prefix=$X=/src --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME=/build"
 cargo build --release --manifest-path wrapper/Cargo.toml --target-dir target > $O/cargo.log 2>&1; rc=$?
 grep -E "^error|warning: unused" $O/cargo.log | head -10
 [ "$rc" = 0 ] || { echo "STOP: cargo build failed (rc $rc) — $O/cargo.log"; exit 4; }

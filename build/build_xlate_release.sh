@@ -14,7 +14,7 @@ rsync -a "$TMP/translator/" "mini:$R/src/"
 ssh mini "set -e
   TC=\$HOME/nvmtl-build/rustup-home/toolchains/1.98.1-aarch64-apple-darwin
   export PATH=\$TC/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin CARGO_HOME=\$HOME/nvmtl-build/cargo-home RUSTUP_HOME=\$HOME/nvmtl-build/rustup-home
-  export RUSTFLAGS=\"--remap-path-prefix=$R/src=/src --remap-path-prefix=\$CARGO_HOME=/cargo --remap-path-prefix=\$HOME=/build\"
+  export RUSTFLAGS=\"-C target-cpu=x86-64 --remap-path-prefix=$R/src=/src --remap-path-prefix=\$CARGO_HOME=/cargo --remap-path-prefix=\$HOME=/build\"
   cd $R/src && cargo build --release --target x86_64-apple-darwin --manifest-path wrapper/Cargo.toml --target-dir $R/target > $R/out/cargo.log 2>&1 \
     || { grep -A6 '^error' $R/out/cargo.log | head -30; exit 4; }
   D=$R/out/libnvmtl_translate.dylib

@@ -7,7 +7,7 @@ MINOS=${MINOS:-15.0}   # deployment target; set MINOS=11.0 in the CI to build fo
 K="$SDK/System/Library/Frameworks/Kernel.framework/Headers"
 [ -d "$K" ] || { echo "STOP: no Kernel.framework headers in $SDK"; exit 1; }
 mkdir -p "$OUT/NMDRM.kext/Contents/MacOS"
-FLAGS=(-arch x86_64 -mmacosx-version-min=$MINOS -fapple-kext -mkernel -nostdinc -isysroot "$SDK" -I"$K"
+FLAGS=(-arch x86_64 -march=x86-64 -mmacosx-version-min=$MINOS -fapple-kext -mkernel -nostdinc -isysroot "$SDK" -I"$K"
        -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT
        -std=c++17 -fno-rtti -fno-exceptions -fno-builtin -fno-common -O2 -Wall -Werror -Wno-unused-parameter -g0
        # Kernel.framework's own headers: IOPCIDevice is marked deprecated (PCIDriverKit) and omits 'override'

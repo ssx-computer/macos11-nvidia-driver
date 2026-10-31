@@ -26,7 +26,7 @@ for rel,patches in sources:
     for flag,val in [('-c',src),('-o',obj),('-MF',base/(stem+'.d')),('-MT',obj)]:args[args.index(flag)+1]=str(val)
     # The recorded commands name neither architecture nor deployment target (recorded on an x86_64 macOS 15 host);
     # the vendor objects are x86_64 with minos 15.0, and the kext links for 15.0.
-    args+=['-arch','x86_64','-mmacosx-version-min='+MINOS,'-ffile-prefix-map='+str(home)+'=/build']
+    args+=['-arch','x86_64','-march=x86-64','-mmacosx-version-min='+MINOS,'-ffile-prefix-map='+str(home)+'=/build']
     with (base/(stem+'-build.log')).open('w') as log:subprocess.run(args,cwd=vendor,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run(['ar','r',str(archive),str(obj)],check=True)
     built+=[src,obj]
@@ -35,7 +35,7 @@ metadata.write_text('const char NV_KMS_ID[] = "nvidia id: NVIDIA UNIX Open Kerne
 line=next(x for x in lines if ' -c _out/Darwin_x86_64/g_nvid_string.c ' in x)
 args=shlex.split(line.split(' && ')[0])
 for flag,val in [('-c',metadata),('-o',base/'g_nvid_string.o'),('-MF',base/'g_nvid_string.d'),('-MT',base/'g_nvid_string.o')]:args[args.index(flag)+1]=str(val)
-args+=['-arch','x86_64','-mmacosx-version-min='+MINOS,'-ffile-prefix-map='+str(home)+'=/build']
+args+=['-arch','x86_64','-march=x86-64','-mmacosx-version-min='+MINOS,'-ffile-prefix-map='+str(home)+'=/build']
 with (base/'metadata-build.log').open('w') as log:subprocess.run(args,cwd=vendor,stdout=log,stderr=subprocess.STDOUT,check=True)
 subprocess.run(['ar','r',str(archive),str(base/'g_nvid_string.o')],check=True)
 subprocess.run(['ranlib',str(archive)],check=True)
