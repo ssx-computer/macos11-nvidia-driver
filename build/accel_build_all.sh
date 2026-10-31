@@ -7,7 +7,7 @@ set -uo pipefail
 SRC=$1; OUT=$2; HERE=$(cd "$(dirname "$0")" && pwd)
 ABI=$(sed -n 's/^#define NVRM_VRAM_ABI_VERSION \([0-9]*\)u.*/\1/p' "$SRC/nvrm_vram_abi.h")
 [ -n "$ABI" ] || { echo "cannot read NVRM_VRAM_ABI_VERSION from $SRC/nvrm_vram_abi.h"; exit 1; }
-for major in 15 26; do
+for major in 11 15 26; do
     rm -rf "$OUT/$major"
     if [ "$major" = 26 ]; then NM_TAHOE=1 bash "$HERE/accel_build.sh" "$SRC" "$OUT/$major" || exit 1
     # /usr/bin/env by path: a PATH that puts ~/.local/bin first finds uv's "env" helper there, which ignores its

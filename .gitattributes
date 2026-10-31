@@ -1,0 +1,15 @@
+# Force LF for everything that runs on macOS/Linux. A trailing CR turns
+# "set -euo pipefail" and "#!/bin/bash" into syntax errors; CI runners are Unix.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.m    text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.cpp  text eol=lf
+*.hpp  text eol=lf
+*.md   text eol=lf
+

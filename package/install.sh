@@ -131,6 +131,10 @@ v=$(sw_vers -productVersion); MAJ=${v%%.*}
 BUILD=$(sw_vers -buildVersion)
 printf '%s\n' "$BUILD" | grep -Eq '^[0-9]+[A-Za-z][A-Za-z0-9]+$' || die "cannot identify the current macOS build"
 case $MAJ in 11|15|26) ;; *) die "This driver is built for macOS 11, 15 and 26 (this is $v); no changes made";; esac
+# macOS 11 (Big Sur) has no /Library/GPUBundles: the driver is loaded by its kext, not by the Metal
+# plugin scanner, so its bundles and caches live under /Library/NullMoth on that release. Every later
+# use of $GB (bundles, nvmtl/ caches, allow-list, permissions, uninstall, rollback) follows this value.
+[ "$MAJ" != 11 ] || GB=/Library/NullMoth
 # NVAccel is the one kext built per macOS: Tahoe made the IOAcceleratorFamily2 methods it inherits private (see
 # kexts/NVRM/accel/gen_tahoe_fwd.py). The other three kexts are the same binaries on 15 and 26.
 VAR="$HERE/Library/NullMoth/kexts/$MAJ"; [ -d "$VAR/NVAccel.kext" ] || die "this package has no NVAccel for macOS $MAJ"
@@ -323,7 +327,7 @@ for k in $KEXTS; do
 done
 # both NVAccel builds stay on disk, so the first start after a macOS upgrade can switch to the matching one
 mkdir -p /Library/NullMoth && rm -rf /Library/NullMoth/kexts && ditto "$HERE/Library/NullMoth/kexts" /Library/NullMoth/kexts || die "copy per-macOS accelerators (restore from $BK)"
-for target in 15 26; do
+for target in 11 15 26; do
   dir=/Library/NullMoth/kexts/$target
   if [ "$PRIMARY" = 1 ]; then
     primary_apply "$dir/NVAccel.kext" NVAccel || die "primary-GPU cache metadata for $target (restore from $BK)"

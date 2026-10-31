@@ -6,65 +6,155 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
 
+env:
+  MINOS: "11.0"
+  OGKM_TAG: "615.78.08"
+  MESA_BASE: "17ca6174"
+  NVMTL_BUNDLE_DIR: "/Library/NullMoth"
+  RUST_BASELINE: "-C target-cpu=x86-64"
+
 jobs:
-  build:
-    name: Build macOS 11 driver (GTX 16/RTX)
-    # No macOS 11 runner exists; build on the oldest Intel runner and target macOS 11 via
-    # -mmacosx-version-min=11.0 so the kexts/bundle carry minos 11.0 and load on Big Sur.
+  userland:
+    name: userland (plugin + translator + NVK)
     runs-on: macos-13
-
-    env:
-      MINOS: "11.0"
-      OGKM_TAG: "615.78.08"
-
     steps:
-      - name: Checkout driver
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Xcode command line tools
+      - name: Toolchain versions
         run: |
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
 
-      - name: Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Meson & Ninja
         run: |
-          brew install meson ninja || true
-          meson --version || true
-          ninja --version || true
+          python3 -m pip install --user --upgrade meson ninja
+          PYBIN="$HOME/Library/Python/$(python3 -c 'import sys;print(sys.version_info.minor)')/bin"
+          echo "$PYBIN" >> "$GITHUB_PATH"
+          "$PYBIN/meson" --version
+          "$PYBIN/ninja" --version
 
-      - name: Fetch NVIDIA open-gpu-kernel-modules (for kext headers)
+      - name: Build translator (AIR -> SPIR-V)
         run: |
-          mkdir -p "$HOME/ogkm610"
-          git clone --depth 1 --branch "$OGKM_TAG" \
-            https://github.com/NVIDIA/open-gpu-kernel-modules.git "$HOME/ogkm610" \
-            || echo "WARN: open-gpu-kernel-modules fetch failed (kext build will be skipped)"
+          set -euo pipefail
+          export RUSTFLAGS="$RUST_BASELINE --remap-path-prefix=$PWD/translator=/src"
+          OUT="$RUNNER_TEMP/out"; mkdir -p "$OUT"
+          cargo build --release --manifest-path translator/wrapper/Cargo.toml \
+            --target-dir "$RUNNER_TEMP/xlate-target"
+          D="$RUNNER_TEMP/xlate-target/release/libnvmtl_translate.dylib"
+          cp "$D" "$OUT/"
+          install_name_tool -id @rpath/libnvmtl_translate.dylib "$OUT/libnvmtl_translate.dylib"
+          codesign -f -s - "$OUT/libnvmtl_translate.dylib"
+          file "$OUT/libnvmtl_translate.dylib"
 
-      - name: Build shader translator
+      - name: Build Metal plugin (NVMTLDriver)
         run: |
-          MINOS="$MINOS" bash build/build_xlate.sh 2>&1 || echo "WARN: translator build failed"
-          ls -la "$HOME/nvmtl-build/LIVE/out/" 2>/dev/null || true
+          set -euo pipefail
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git "$RUNNER_TEMP/Vulkan-Headers"
+          OUT="$RUNNER_TEMP/out/plugin"; mkdir -p "$OUT"
+          cd plugin
+          xcrun clang -arch x86_64 -march=x86-64 -bundle -fobjc-arc -O1 \
+            -mmacosx-version-min="$MINOS" -Wunguarded-availability-new \
+            -DNVMTL_BUNDLE_DIR="\"$NVMTL_BUNDLE_DIR\"" \
+            -I"$RUNNER_TEMP/Vulkan-Headers/include" \
+            -o "$OUT/NVMTLDriver" NVMTLDevice.m \
+            -framework Foundation -framework Metal -framework IOSurface \
+            -framework IOKit -framework CoreFoundation \
+            2> "$OUT/NVMTLDriver.err" \
+            || { grep -A2 ': error:' "$OUT/NVMTLDriver.err" | head -40; exit 1; }
+          codesign -f -s - "$OUT/NVMTLDriver"
+          echo "errors: $(grep -c ': error:' "$OUT/NVMTLDriver.err" || true)"
+          otool -l "$OUT/NVMTLDriver" | awk '/minos/{print "minos", $2; exit}'
 
-      - name: Build Metal plugin
+      - name: Build NVK (libvulkan_nouveau.dylib) from Mesa
         run: |
-          MINOS="$MINOS" bash build/build_plugin.sh 2>&1 || echo "WARN: plugin build failed"
-          ls -la "$HOME/nvmtl-build/LIVE/out/" 2>/dev/null || true
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/mesa"
+          mkdir -p "$WORK/mesa-src"
+          cd "$WORK/mesa-src"
+          git init -q .
+          git remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
+          git fetch -q --depth 1 origin "$MESA_BASE"
+          git checkout -q FETCH_HEAD
+          git apply --check "$GITHUB_WORKSPACE/nvk/nvk-macos.patch"
+          git apply "$GITHUB_WORKSPACE/nvk/nvk-macos.patch"
+          meson setup build . -Dbuildtype=release -Db_ndebug=true \
+            -Dvulkan-drivers=nouveau -Dgallium-drivers= -Dplatforms= \
+            -Degl=disabled -Dglx=disabled -Dglvnd=disabled -Dllvm=disabled \
+            -Dvulkan-layers= -Dtools= -Dbuild-tests=false -Dexpat=disabled \
+            -Dzstd=disabled -Dlibunwind=disabled -Dlmsensors=disabled \
+            -Dvalgrind=disabled -Dxlib-lease=disabled -Dgallium-rusticl=false \
+            -Dspirv-tools=disabled \
+            -Dc_args="-march=x86-64 -ffile-prefix-map=$PWD=/src" \
+            -Dcpp_args="-march=x86-64 -ffile-prefix-map=$PWD=/src" \
+            -Drust_args="-C target-cpu=x86-64 --remap-path-prefix=$PWD=/src"
+          ninja -C build -k 0 src/nouveau/vulkan/libvulkan_nouveau.dylib
+          OUT="$RUNNER_TEMP/out/nvmtl"; mkdir -p "$OUT"
+          cp build/src/nouveau/vulkan/libvulkan_nouveau.dylib "$OUT/"
+          strip -S "$OUT/libvulkan_nouveau.dylib"
+          file "$OUT/libvulkan_nouveau.dylib"
 
-      - name: Build NVAccel kext
+      - name: Assemble GPUBundles layout
         run: |
-          MINOS="$MINOS" bash build/accel_build.sh \
-            "$PWD/kexts/NVRM" "$HOME/build-out/11" 2>&1 || echo "WARN: accel build failed"
-          ls -la "$HOME/build-out/11/NVAccel.kext/Contents/MacOS/" 2>/dev/null || true
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/out"
+          B="$OUT/GPUBundles/NVMTLDriver.bundle"
+          mkdir -p "$B/Contents/MacOS" "$OUT/GPUBundles/nvmtl"
+          cp "$OUT/plugin/NVMTLDriver" "$B/Contents/MacOS/NVMTLDriver"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string NVMTLDriver' \
+            -c 'Add :CFBundleIdentifier string com.nullmoth.NVMTLDriver' \
+            -c 'Add :CFBundleName string NVMTLDriver' \
+            -c 'Add :CFBundlePackageType string BNDL' \
+            -c 'Add :CFBundleVersion string 1.0' "$B/Contents/Info.plist"
+          cp "$OUT/nvmtl/libvulkan_nouveau.dylib" "$OUT/GPUBundles/nvmtl/"
+          cp "$OUT/libnvmtl_translate.dylib" "$OUT/GPUBundles/nvmtl/"
+          nm -gU "$OUT/GPUBundles/nvmtl/libvulkan_nouveau.dylib" | grep -c . > "$RUNNER_TEMP/xlate-exports.txt" || true
+          printf '%s\n' '*NVAccel*' > "$OUT/GPUBundles/nvmtl-allow.txt"
+          find "$OUT/GPUBundles" -type f | sort
 
-      - name: Upload artifacts
+      - name: Upload userland
         uses: actions/upload-artifact@v4
         with:
-          name: macos11-driver
-          path: |
-            $HOME/nvmtl-build/LIVE/out/
-            $HOME/build-out/
-          if-no-files-found: ignore
+          name: userland
+          path: ${{ runner.temp }}/out/GPUBundles/
+          if-no-files-found: error
+
+  kexts:
+    name: kexts (NMDRM + NMHDA)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Xcode SDK path
+        run: |
+          SDKPATH=$(xcrun --sdk macosx --show-sdk-path)
+          echo "SDK=$SDKPATH" >> "$GITHUB_ENV"
+          echo "$SDKPATH"
+
+      - name: Build NMDRM
+        run: |
+          set -euo pipefail
+          bash kexts/NMDRM/build.sh "$RUNNER_TEMP/out"
+
+      - name: Build NMHDA
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/acidanthera/MacKernelSDK.git "$RUNNER_TEMP/MacKernelSDK"
+          curl -fsSL -o "$RUNNER_TEMP/lilu.zip" \
+            https://github.com/acidanthera/Lilu/releases/latest/download/Lilu-1.7.1-DEBUG.zip
+          ( cd "$RUNNER_TEMP" && unzip -q lilu.zip )
+          LILU=$(find "$RUNNER_TEMP" -maxdepth 2 -name 'Lilu.kext' -type d | head -1)
+          bash kexts/NMHDA/build.sh "$LILU" "$RUNNER_TEMP/MacKernelSDK" "$RUNNER_TEMP/out"
+
+      - name: Upload kexts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kexts
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error

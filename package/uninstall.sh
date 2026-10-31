@@ -7,6 +7,9 @@ PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 # the NVIDIA driver only: the AMD/Intel GPU driver, the NPU driver and the audio driver are separate products with
 # their own uninstallers
 KEXTS="NVRM NVAccel NVRMFB NVRMAGDC NVPrimarySelector"; EXT=/Library/Extensions; GB=/Library/GPUBundles
+# macOS 11 (Big Sur) has no /Library/GPUBundles; install.sh puts the driver's bundles and caches in
+# /Library/NullMoth on that release, so removal has to look there too or it leaves a stale payload behind.
+[ "$(sw_vers -productVersion | cut -d. -f1)" != 11 ] || GB=/Library/NullMoth
 KC=/Library/KernelCollections/AuxiliaryKernelExtensions.kc
 K=/System/Library/Kernels/kernel
 KARG=(--allow-missing-kdk); [ -f "$K" ] && KARG+=(--kernel "$K")   # without a matching Kernel Debug Kit, kmutil needs --allow-missing-kdk

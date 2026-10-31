@@ -16,7 +16,7 @@ if [ ! -f "$B/build.ninja" ]; then
   rc=$?
   [ $rc = 0 ] || { echo "STOP: meson setup failed rc=$rc"; tail -30 "$N/rebase263/setup.log"; exit 3; }
 fi
-meson configure "$B" "-Dc_args=-ffile-prefix-map=$S=/src -ffile-prefix-map=$HOME=/build" "-Dcpp_args=-ffile-prefix-map=$S=/src -ffile-prefix-map=$HOME=/build" "-Drust_args=--remap-path-prefix=$S=/src --remap-path-prefix=$HOME=/build" > "$N/rebase263/configure.log" 2>&1 || { echo "STOP: meson configure failed"; tail -5 "$N/rebase263/configure.log"; exit 3; }
+meson configure "$B" "-Dc_args=-march=x86-64 -ffile-prefix-map=$S=/src -ffile-prefix-map=$HOME=/build" "-Dcpp_args=-march=x86-64 -ffile-prefix-map=$S=/src -ffile-prefix-map=$HOME=/build" "-Drust_args=-C target-cpu=x86-64 --remap-path-prefix=$S=/src --remap-path-prefix=$HOME=/build" > "$N/rebase263/configure.log" 2>&1 || { echo "STOP: meson configure failed"; tail -5 "$N/rebase263/configure.log"; exit 3; }
 nice ninja -C "$B" -k 0 src/nouveau/vulkan/libvulkan_nouveau.dylib > "$N/rebase263/ninja.log" 2>&1
 rc=$?
 echo "ninja rc=$rc  errors=$(grep -c -E 'error(\[E[0-9]+\])?:' $N/rebase263/ninja.log)  FAILED=$(grep -c '^FAILED' $N/rebase263/ninja.log)"
