@@ -93,7 +93,7 @@ jobs:
 
   userland:
     name: userland (plugin + translator + NVK)
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
@@ -209,7 +209,7 @@ jobs:
 
   kexts:
     name: kexts (NMDRM + NMHDA)
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
