@@ -8,7 +8,7 @@ name: build-macos11
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
     tags: [ 'v*' ]
 
 env:
@@ -67,9 +67,12 @@ jobs:
           OUT="$RUNNER_TEMP/out/plugin"
           mkdir -p "$OUT"
           cd plugin
+          # NVMTL_BUNDLE_DIR is a C string literal: clang needs the inner quotes, so they are
+          # built into the argument here rather than relying on shell quoting to survive.
+          BUNDLEDIR="-DNVMTL_BUNDLE_DIR=\"$NVMTL_BUNDLE_DIR\""
           xcrun clang -arch x86_64 -march=x86-64 -bundle -fobjc-arc -O1 \
             -mmacosx-version-min="$MINOS" -Wunguarded-availability-new \
-            -DNVMTL_BUNDLE_DIR="\"$NVMTL_BUNDLE_DIR\"" \
+            "$BUNDLEDIR" \
             -I"$RUNNER_TEMP/Vulkan-Headers/include" \
             -o "$OUT/NVMTLDriver" NVMTLDevice.m \
             -framework Foundation -framework Metal -framework IOSurface \
