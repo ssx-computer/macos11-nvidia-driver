@@ -1,0 +1,20 @@
+09:54:41.321288 exec-cmd.c:266          trace: resolved executable dir: C:/Program Files/Git/mingw64/bin
+09:54:41.333450 git.c:502               trace: built-in: git ls-remote --heads origin
+09:54:41.334450 run-command.c:674       trace: run_command: GIT_DIR=.git git remote-https origin https://github.com/ssx-computer/macos11-nvidia-driver.git
+09:54:41.334450 run-command.c:946       trace: start_command: git remote-https origin https://github.com/ssx-computer/macos11-nvidia-driver.git
+09:54:41.342450 exec-cmd.c:266          trace: resolved executable dir: C:/Program Files/Git/mingw64/libexec/git-core
+09:54:41.346451 git.c:812               trace: exec: git-remote-https origin https://github.com/ssx-computer/macos11-nvidia-driver.git
+09:54:41.348450 run-command.c:674       trace: run_command: git-remote-https origin https://github.com/ssx-computer/macos11-nvidia-driver.git
+09:54:41.348450 run-command.c:946       trace: start_command: git-remote-https origin https://github.com/ssx-computer/macos11-nvidia-driver.git
+09:54:41.355450 exec-cmd.c:266          trace: resolved executable dir: C:/Program Files/Git/mingw64/libexec/git-core
+09:54:41.367450 http.c:1033             == Info: Could not find host github.com in the .netrc file; using defaults
+09:54:41.371455 http.c:1033             == Info: Host github.com:443 was resolved.
+09:54:41.371455 http.c:1033             == Info: IPv6: (none)
+09:54:41.371455 http.c:1033             == Info: IPv4: 20.27.177.113
+09:54:41.371455 http.c:1033             == Info:   Trying 20.27.177.113:443...
+09:54:41.431953 http.c:1033             == Info: schannel: disabled automatic use of client certificate
+09:54:41.433949 http.c:1033             == Info: ALPN: curl offers http/1.1
+09:55:00.748396 http.c:1033             == Info: Recv failure: Connection was reset
+09:55:00.748396 http.c:1033             == Info: schannel: failed to receive handshake, SSL/TLS connection failed
+09:55:00.748396 http.c:1033             == Info: closing connection #0
+fatal: unable to access 'https://github.com/ssx-computer/macos11-nvidia-driver.git/': Recv failure: Connection was reset

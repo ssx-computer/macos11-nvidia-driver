@@ -20,6 +20,77 @@ env:
   RUST_BASELINE: "-C target-cpu=x86-64"
 
 jobs:
+  # ---------------------------------------------------------------------------------------------
+  # Probe: macos-13 is the last Intel runner pool and queues for a long time on free public repos.
+  # macOS 14+ runners are arm64, so building there needs an explicit x86_64 cross target. This job
+  # answers, in a minute instead of an hour, whether cross-building to x86_64 Big Sur is possible:
+  # does the SDK still ship Kernel.framework (kexts), does clang still accept -fapple-kext/-mkernel,
+  # and does -target x86_64-apple-macos11.0 actually produce x86_64 objects?
+  # ---------------------------------------------------------------------------------------------
+  probe:
+    name: probe (arm64 runner -> x86_64 Big Sur cross build)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host and SDK
+        run: |
+          set -u
+          uname -m
+          sw_vers
+          xcodebuild -version
+          SDK=$(xcrun --sdk macosx --show-sdk-path)
+          echo "SDK=$SDK"
+          echo "sdk version: $(xcrun --sdk macosx --show-sdk-version)"
+          echo "-- Kernel.framework present? --"
+          ls -d "$SDK/System/Library/Frameworks/Kernel.framework/Headers" 2>&1 || echo "MISSING Kernel.framework"
+          echo "-- IOKit present? --"
+          ls -d "$SDK/System/Library/Frameworks/IOKit.framework" 2>&1 || echo "MISSING IOKit"
+          echo "-- Metal present? --"
+          ls -d "$SDK/System/Library/Frameworks/Metal.framework" 2>&1 || echo "MISSING Metal"
+
+      - name: Can clang emit x86_64 objects for macOS 11?
+        run: |
+          set -u
+          printf 'int f(void){return 42;}\n' > /tmp/probe.c
+          xcrun clang -target x86_64-apple-macos11.0 -c /tmp/probe.c -o /tmp/probe.o && echo "COMPILE OK" || echo "COMPILE FAILED"
+          if [ -f /tmp/probe.o ]; then
+            xcrun vtool -show-build /tmp/probe.o || true
+            xcrun lipo -info /tmp/probe.o || true
+            xcrun file /tmp/probe.o || true
+          fi
+
+      - name: Can clang build a kext (fapple-kext + Kernel.framework) for x86_64?
+        run: |
+          set -u
+          SDK=$(xcrun --sdk macosx --show-sdk-path)
+          printf 'extern "C" int probe_kmod(void){return 7;}\n' > /tmp/probe_kmod.cpp
+          xcrun clang++ -target x86_64-apple-macos11.0 -mmacosx-version-min=11.0 \
+            -fapple-kext -mkernel -nostdinc -isysroot "$SDK" \
+            -I"$SDK/System/Library/Frameworks/Kernel.framework/Headers" \
+            -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT \
+            -std=c++17 -fno-rtti -fno-exceptions -fno-builtin -fno-common \
+            -c /tmp/probe_kmod.cpp -o /tmp/probe_kmod.o && echo "KEXT COMPILE OK" || echo "KEXT COMPILE FAILED"
+          [ -f /tmp/probe_kmod.o ] && xcrun file /tmp/probe_kmod.o || true
+
+      - name: Can arm64 host run x86_64 rust/cargo natively?
+        run: |
+          set -u
+          uname -m
+          sysctl -n sysctl.proc_translated 2>/dev/null || echo "no proc_translated key"
+          which rustc || echo "no rustc preinstalled"
+          which cargo || echo "no cargo preinstalled"
+          arch || true
+
+      - name: Does the SDK still link a Metal bundle for x86_64?
+        run: |
+          set -u
+          SDK=$(xcrun --sdk macosx --show-sdk-path)
+          printf '#import <Metal/Metal.h>\nint probe(void){id<MTLDevice> d = MTLCreateSystemDefaultDevice(); return d ? 1 : 0;}\n' > /tmp/probe_metal.m
+          xcrun clang -target x86_64-apple-macos11.0 -mmacosx-version-min=11.0 -fobjc-arc \
+            -isysroot "$SDK" -c /tmp/probe_metal.m -o /tmp/probe_metal.o && echo "METAL COMPILE OK" || echo "METAL COMPILE FAILED"
+          [ -f /tmp/probe_metal.o ] && xcrun file /tmp/probe_metal.o || true
+
   userland:
     name: userland (plugin + translator + NVK)
     runs-on: macos-13
