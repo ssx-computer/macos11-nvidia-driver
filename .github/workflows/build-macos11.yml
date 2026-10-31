@@ -29,7 +29,7 @@ jobs:
   # ---------------------------------------------------------------------------------------------
   probe:
     name: probe (arm64 runner -> x86_64 Big Sur cross build)
-    runs-on: macos-15
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
