@@ -160,8 +160,13 @@ jobs:
       - name: Build NVK (libvulkan_nouveau.dylib) from Mesa
         run: |
           set -euo pipefail
-          # nvk-macos.patch carries 'rebase263/mesa/...' path prefixes, so the tree must live
-          # at <workspace>/rebase263/mesa for `git apply` to resolve the targets.
+          # The patch was produced as `diff -ruN upmesa/mesa-17ca6174 rebase263/mesa`: the OLD
+          # side is the author's pristine mesa at MESA_BASE, the NEW side is the driver tree.
+          # Its hunk headers carry two paths whose 2nd component differs (mesa-17ca6174 vs mesa),
+          # and `git apply` refuses because the old-side files do not exist on a fresh runner.
+          # `patch -p2` strips both down to <rel> and patches the files already in the tree we
+          # fetched - which ARE the pristine MESA_BASE files, so the context matches. New files
+          # are created; deletions applied too.
           MESA="$GITHUB_WORKSPACE/rebase263/mesa"
           rm -rf "$MESA"
           mkdir -p "$MESA"
@@ -170,10 +175,9 @@ jobs:
           git remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
           git fetch -q --depth 1 origin "$MESA_BASE"
           git checkout -q FETCH_HEAD
-          cd "$GITHUB_WORKSPACE"
-          git apply --check nvk/nvk-macos.patch
-          git apply nvk/nvk-macos.patch
-          cd "$MESA"
+          patch -p2 -N < "$GITHUB_WORKSPACE/nvk/nvk-macos.patch"
+          echo "patched files: $(git status --short | wc -l | tr -d ' ')"
+          git status --short | head -40
           meson setup build . -Dbuildtype=release -Db_ndebug=true \
             -Dvulkan-drivers=nouveau -Dgallium-drivers= -Dplatforms= \
             -Degl=disabled -Dglx=disabled -Dglvnd=disabled -Dllvm=disabled \
