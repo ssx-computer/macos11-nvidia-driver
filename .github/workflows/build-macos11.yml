@@ -1,9 +1,10 @@
 name: build-macos11
 
-# macOS 11 (Big Sur) target. GitHub has no macOS 11 runner, so we build on the oldest Intel runner
-# (macos-13) and force the deployment target to 11.0. Every CPU-bound build is pinned to the x86-64
-# baseline because the target machine is an Intel E5-1660 v1 (Sandy Bridge-EP): it has AVX but no
-# AVX2, and an AVX2 instruction reaching WindowServer is an instant SIGILL and a black screen.
+# macOS 11 (Big Sur) target. GitHub has no macOS 11 runner, so we build on macos-15-intel (a
+# native x86_64 pool that queues far shorter than macos-13) and force the deployment target to
+# 11.0. Every CPU-bound build is pinned to the x86-64 baseline because the target machine is an
+# Intel E5-1660 v1 (Sandy Bridge-EP): it has AVX but no AVX2, and an AVX2 instruction reaching
+# WindowServer is an instant SIGILL and a black screen.
 
 on:
   workflow_dispatch:
@@ -21,14 +22,13 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------------------------
-  # Probe: macos-13 is the last Intel runner pool and queues for a long time on free public repos.
-  # macOS 14+ runners are arm64, so building there needs an explicit x86_64 cross target. This job
-  # answers, in a minute instead of an hour, whether cross-building to x86_64 Big Sur is possible:
-  # does the SDK still ship Kernel.framework (kexts), does clang still accept -fapple-kext/-mkernel,
-  # and does -target x86_64-apple-macos11.0 actually produce x86_64 objects?
+  # Probe: a cheap, fast sanity check of the macos-15-intel image (macos-13, the older Intel pool,
+  # queues for a very long time). It confirms the SDK ships Kernel.framework (kexts), that clang
+  # accepts -fapple-kext/-mkernel, and that -target x86_64-apple-macos11.0 produces x86_64
+  # objects stamped for minos 11.0.
   # ---------------------------------------------------------------------------------------------
   probe:
-    name: probe (arm64 runner -> x86_64 Big Sur cross build)
+    name: probe (macos-15-intel -> x86_64 Big Sur)
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +73,7 @@ jobs:
             -c /tmp/probe_kmod.cpp -o /tmp/probe_kmod.o && echo "KEXT COMPILE OK" || echo "KEXT COMPILE FAILED"
           [ -f /tmp/probe_kmod.o ] && xcrun file /tmp/probe_kmod.o || true
 
-      - name: Can arm64 host run x86_64 rust/cargo natively?
+      - name: Is the host x86_64 and is a Rust toolchain available?
         run: |
           set -u
           uname -m
@@ -110,11 +110,13 @@ jobs:
 
       - name: Install Meson and Ninja
         run: |
-          python3 -m pip install --user --upgrade meson ninja
-          PYBIN="$HOME/Library/Python/$(python3 -c 'import sys;print(sys.version_info.minor)')/bin"
-          echo "$PYBIN" >> "$GITHUB_PATH"
-          "$PYBIN/meson" --version
-          "$PYBIN/ninja" --version
+          # Homebrew's python3 is PEP-668 externally managed on macOS 14+, so --user fails.
+          # Use a venv and put its bin/ on GITHUB_PATH for the build steps.
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --upgrade meson ninja
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          meson --version
+          ninja --version
 
       - name: Build translator (AIR to SPIR-V)
         run: |
@@ -231,7 +233,7 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/acidanthera/MacKernelSDK.git "$RUNNER_TEMP/MacKernelSDK"
           curl -fsSL -o "$RUNNER_TEMP/lilu.zip" \
-            https://github.com/acidanthera/Lilu/releases/latest/download/Lilu-1.7.1-DEBUG.zip
+            https://github.com/acidanthera/Lilu/releases/latest/download/Lilu-1.7.2-DEBUG.zip
           ( cd "$RUNNER_TEMP" && unzip -q lilu.zip )
           LILU=$(find "$RUNNER_TEMP" -maxdepth 2 -name 'Lilu.kext' -type d | head -1)
           bash kexts/NMHDA/build.sh "$LILU" "$RUNNER_TEMP/MacKernelSDK" "$RUNNER_TEMP/out"
