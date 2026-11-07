@@ -115,8 +115,9 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --upgrade meson ninja
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-          meson --version
-          ninja --version
+          # GITHUB_PATH only takes effect from the NEXT step, so verify with the full path here.
+          "$RUNNER_TEMP/venv/bin/meson" --version
+          "$RUNNER_TEMP/venv/bin/ninja" --version
 
       - name: Build translator (AIR to SPIR-V)
         run: |
