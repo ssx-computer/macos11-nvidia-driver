@@ -14,7 +14,7 @@ on:
 
 env:
   MINOS: "11.0"
-  MESA_BASE: "17ca6174"
+  MESA_BASE: "17ca6174dcc6cb22059ac343bc29f8af7800f42e"   # tag mesa-26.3.0-rc3 (full sha: GitLab rejects short-sha fetches)
   # macOS 11 has no /Library/GPUBundles: the driver is loaded by its kext, not by the Metal plugin
   # scanner, so the bundles and caches live under /Library/NullMoth on that release.
   NVMTL_BUNDLE_DIR: "/Library/NullMoth"
@@ -160,15 +160,20 @@ jobs:
       - name: Build NVK (libvulkan_nouveau.dylib) from Mesa
         run: |
           set -euo pipefail
-          WORK="$RUNNER_TEMP/mesa"
-          mkdir -p "$WORK/mesa-src"
-          cd "$WORK/mesa-src"
+          # nvk-macos.patch carries 'rebase263/mesa/...' path prefixes, so the tree must live
+          # at <workspace>/rebase263/mesa for `git apply` to resolve the targets.
+          MESA="$GITHUB_WORKSPACE/rebase263/mesa"
+          rm -rf "$MESA"
+          mkdir -p "$MESA"
+          cd "$MESA"
           git init -q .
           git remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
           git fetch -q --depth 1 origin "$MESA_BASE"
           git checkout -q FETCH_HEAD
-          git apply --check "$GITHUB_WORKSPACE/nvk/nvk-macos.patch"
-          git apply "$GITHUB_WORKSPACE/nvk/nvk-macos.patch"
+          cd "$GITHUB_WORKSPACE"
+          git apply --check nvk/nvk-macos.patch
+          git apply nvk/nvk-macos.patch
+          cd "$MESA"
           meson setup build . -Dbuildtype=release -Db_ndebug=true \
             -Dvulkan-drivers=nouveau -Dgallium-drivers= -Dplatforms= \
             -Degl=disabled -Dglx=disabled -Dglvnd=disabled -Dllvm=disabled \
