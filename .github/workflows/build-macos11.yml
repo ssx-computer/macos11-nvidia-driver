@@ -157,9 +157,24 @@ jobs:
           otool -l "$OUT/NVMTLDriver" | awk '/minos/{print "minos", $2; exit}'
           echo "errors: $(grep -c ': error:' "$OUT/NVMTLDriver.err" || true)"
 
+      - name: Install glslangValidator (NVK BVH dependency)
+        run: |
+          set -euo pipefail
+          # NVK's acceleration-structure (BVH) builder is compiled at build time by the host
+          # glslangValidator (nvk-macos.patch adds with_nouveau_vk to the with_bvh list; without it
+          # the dylib carries five unresolved vk_*bvh* refs and dlopen fails in WindowServer).
+          # No x86_64-macOS Homebrew bottle exists, so this builds spirv-tools + glslang from source
+          # (~15-25 min on a 4-core Intel runner). The original author used a source build in
+          # $HOME/tools/glslang; brew is the maintained equivalent.
+          HOMEBREW_NO_INSTALL_CLEANUP=1 brew install glslang
+          command -v glslangValidator
+          glslangValidator --version
+
       - name: Build NVK (libvulkan_nouveau.dylib) from Mesa
         run: |
           set -euo pipefail
+          # glslangValidator (brew, /usr/local) must be on PATH for meson's find_program.
+          export PATH="/usr/local/bin:$PATH"
           # nvk-macos.patch carries git-style headers (`--- a/<rel>` / `+++ b/<rel>`) and is a
           # pure modification of the pristine MESA_BASE tree (no new files, no /dev/null). So we
           # fetch exactly MESA_BASE and `git apply` from INSIDE the mesa checkout: git strips the
